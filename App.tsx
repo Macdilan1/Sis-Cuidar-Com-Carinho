@@ -1,5 +1,4 @@
 
-
 import React, { useState, useCallback } from 'react';
 import { Button } from './components/Button';
 import { Input } from './components/Input';
@@ -243,12 +242,6 @@ export const App = () => {
 
       <main className="w-full max-w-2xl bg-white p-8 rounded-xl shadow-lg border border-gray-200">
         <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
-          <Input
-            label="Nome do Paciente (Opcional)"
-            placeholder="Ex: Maria da Silva"
-            value={patientName}
-            onChange={(e) => setPatientName(e.target.value)}
-          />
           <Input
             label="Data de Início do Relatório"
             type="date"
