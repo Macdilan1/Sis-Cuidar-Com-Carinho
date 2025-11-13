@@ -1,0 +1,5 @@
+{
+  "name": "Cuidar com carinho: Anotações Diárias",
+  "description": "Aplicação para registrar anotações diárias de cuidados, gerar descrições em áudio e download de relatórios.",
+  "requestFramePermissions": []
+}
