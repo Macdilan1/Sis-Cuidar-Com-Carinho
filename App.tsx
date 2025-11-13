@@ -1,12 +1,8 @@
 
-
 import React, { useState, useCallback } from 'react';
-import { GoogleGenAI, Modality } from "@google/genai";
-import { generateSpeech } from './services/geminiService';
 import { Button } from './components/Button';
 import { Input } from './components/Input';
-import { AudioPlayer } from './components/AudioPlayer';
-import { ProcedureRepeatGroup, ProcedureEntryType } from './components/ProcedureRepeatGroup'; // Importa o novo componente
+import { ProcedureRepeatGroup, ProcedureEntryType } from './components/ProcedureRepeatGroup';
 
 // The 'use' client directive is important for client-side functionality.
 'use client';
@@ -17,14 +13,12 @@ export const App = () => {
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
   // Initialize with current time in HH:MM format
   const [reportStartTime, setReportStartTime] = useState(() => new Date().toTimeString().slice(0, 5));
-  const [procedureEntries, setProcedureEntries] = useState<ProcedureEntryType[]>([]); // Novo estado para as entradas de procedimento
-  const [downloadDescription, setDownloadDescription] = useState(''); // New state for download description
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [reportText, setReportText] = useState<string | null>(null); // Novo estado para o relatório escrito
-  const [isLoading, setIsLoading] = useState(false); // For TTS generation
+  const [procedureEntries, setProcedureEntries] = useState<ProcedureEntryType[]>([]);
+  const [downloadDescription, setDownloadDescription] = useState('');
+  const [reportText, setReportText] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Funções para manipular as entradas de procedimento
   const handleAddProcedureEntry = useCallback(() => {
     setProcedureEntries((prevEntries) => [
       ...prevEntries,
@@ -49,73 +43,42 @@ export const App = () => {
     );
   }, []);
 
-
-  const handleGenerateAudio = useCallback(async () => {
-    // Validação para o grupo de repetição
+  const handleGenerateReport = useCallback(async () => {
     const hasValidProcedure = procedureEntries.some(entry => entry.description.trim() !== '');
     if (procedureEntries.length === 0 || !hasValidProcedure) {
-      setError('Por favor, adicione e preencha ao menos uma descrição de procedimento para gerar o áudio.');
+      setError('Por favor, adicione e preencha ao menos uma descrição de procedimento para gerar o relatório.');
       return;
     }
 
     setIsLoading(true);
     setError(null);
-    setAudioUrl(null); // Clear previous audio URL
-    setReportText(null); // Clear previous report text
+    setReportText(null);
 
     try {
       const patientInfo = patientName ? ` para ${patientName}` : ' para paciente não especificado';
       const dateTimeInfo = `no dia ${reportDate} às ${reportStartTime}`;
       
-      // Concatena as entradas de procedimento para formar o texto principal para ÁUDIO
-      const proceduresTextForAudio = procedureEntries
-        .filter(entry => entry.description.trim()) // Garante que apenas descrições preenchidas sejam incluídas
-        .map(entry => {
-          const timePart = entry.time ? `Às ${entry.time}` : 'Em um horário não especificado';
-          return `${timePart}: ${entry.description.trim()}.`;
-        })
-        .join(' '); // Junta todas as frases dos procedimentos com espaço
-
-      const audioText = `Anotação${patientInfo} ${dateTimeInfo}: ${proceduresTextForAudio}`;
-      const url = await generateSpeech(audioText);
-      setAudioUrl(url);
-
-      // Concatena as entradas de procedimento para formar o texto para RELATÓRIO ESCRITO
       const proceduresTextForReport = procedureEntries
         .filter(entry => entry.description.trim())
         .map(entry => {
           const timePart = entry.time ? `Hora: ${entry.time}` : 'Hora: Não especificada';
           return `${timePart}\nDescrição: ${entry.description.trim()}`;
         })
-        .join('\n\n'); // Junta as entradas com duas quebras de linha para melhor formatação no relatório
+        .join('\n\n');
       
       const fullReportContent = `Relatório de Cuidados${patientInfo} ${dateTimeInfo}\n\n${proceduresTextForReport}`;
       setReportText(fullReportContent);
 
     } catch (err: any) {
-      console.error('Erro ao gerar áudio ou relatório:', err);
-      setError('Falha ao gerar o áudio e/ou relatório. Por favor, tente novamente mais tarde.');
+      console.error('Erro ao gerar relatório:', err);
+      setError('Falha ao gerar o relatório. Por favor, tente novamente mais tarde.');
     } finally {
       setIsLoading(false);
     }
-  }, [patientName, reportDate, reportStartTime, procedureEntries]); // Dependências atualizadas
-
-  // Helper to format filename for audio download
-  const getDownloadFilename = () => {
-    const datePart = reportDate.replace(/-/g, ''); // Remove hyphens for filename
-    const timePart = reportStartTime.replace(/:/g, ''); // Remove colons for filename
-
-    if (downloadDescription.trim()) {
-      const sanitizedDescription = downloadDescription.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
-      return `${sanitizedDescription}_${datePart}_${timePart}.wav`;
-    } else {
-      const namePart = patientName ? patientName.replace(/\s/g, '_') : 'paciente';
-      return `anotacao_${namePart}_${datePart}_${timePart}.wav`;
-    }
-  };
+  }, [patientName, reportDate, reportStartTime, procedureEntries]);
 
   // Helper to format filename for report download
-  const getReportFilename = () => {
+  const getFilename = useCallback(() => {
     const datePart = reportDate.replace(/-/g, '');
     const timePart = reportStartTime.replace(/:/g, '');
 
@@ -126,21 +89,20 @@ export const App = () => {
       const namePart = patientName ? patientName.replace(/\s/g, '_') : 'paciente';
       return `relatorio_${namePart}_${datePart}_${timePart}.txt`;
     }
-  };
+  }, [reportDate, reportStartTime, downloadDescription, patientName]);
 
   const handleDownloadReport = useCallback(() => {
     if (reportText) {
       const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = getReportFilename();
+      link.download = getFilename();
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
     }
-  }, [reportText, getReportFilename]);
-
+  }, [reportText, getFilename]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -174,7 +136,6 @@ export const App = () => {
             onChange={(e) => setReportStartTime(e.target.value)}
           />
           
-          {/* Substitui o Textarea pela ProcedureRepeatGroup */}
           <ProcedureRepeatGroup
             entries={procedureEntries}
             onAdd={handleAddProcedureEntry}
@@ -190,31 +151,17 @@ export const App = () => {
           />
 
           <Button
-            onClick={handleGenerateAudio}
+            onClick={handleGenerateReport}
             disabled={isLoading}
             className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Gerando Áudio e Relatório...' : 'Gerar Áudio da Anotação e Relatório'}
+            {isLoading ? 'Gerando Relatório...' : 'Gerar Relatório'}
           </Button>
         </form>
 
         {error && (
           <div className="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-md" role="alert">
             {error}
-          </div>
-        )}
-
-        {audioUrl && (
-          <div className="mt-8">
-            <h3 className="text-xl font-semibold text-gray-800 mb-4">Reproduzir Anotação em Áudio:</h3>
-            <AudioPlayer src={audioUrl} />
-            <a
-              href={audioUrl}
-              download={getDownloadFilename()}
-              className="mt-4 inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
-            >
-              Baixar Áudio
-            </a>
           </div>
         )}
 
@@ -237,8 +184,6 @@ export const App = () => {
 
         <section className="mt-8 pt-6 border-t border-gray-200 text-center text-gray-500 text-sm">
           <p>
-            Powered by Gemini API for text-to-speech generation.
-            <br />
             Para dúvidas ou sugestões, visite nosso site em <a href="https://mac_dylan" target="_blank" rel="noopener noreferrer" className="text-green-500 hover:text-green-600 underline">mac_dylan</a>
           </p>
         </section>
