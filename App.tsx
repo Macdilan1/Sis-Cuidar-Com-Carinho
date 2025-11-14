@@ -3,60 +3,9 @@ import React, { useState, useCallback } from 'react';
 import { Button } from './components/Button';
 import { Input } from './components/Input';
 import { ProcedureRepeatGroup, ProcedureEntryType } from './components/ProcedureRepeatGroup';
-import { jsPDF } from 'jspdf';
-import { GoogleGenAI, Modality } from '@google/genai'; // Import GoogleGenAI and Modality
-import { AudioPlayer } from './components/AudioPlayer'; // Re-introduce AudioPlayer component
-import { decode, decodeAudioData, arrayBufferToWavBlob } from './utils/audioUtils'; // Import audio utilities
 
 // The 'use' client directive is important for client-side functionality.
 'use client';
-
-// Helper function to calculate shift duration
-const calculateShiftDuration = (
-  startDateStr: string,
-  startTimeStr: string,
-  endDateStr: string,
-  endTimeStr: string,
-): string => {
-  if (!startDateStr || !startTimeStr || !endDateStr || !endTimeStr) {
-    return 'Não disponível (informações incompletas)';
-  }
-
-  const start = new Date(`${startDateStr}T${startTimeStr}:00`);
-  const end = new Date(`${endDateStr}T${endTimeStr}:00`);
-
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    return 'Não disponível (formato de data/hora inválido)';
-  }
-
-  const diffMs = end.getTime() - start.getTime();
-  
-  if (diffMs < 0) {
-    return 'Duração inválida (data/hora final antes da inicial)';
-  }
-
-  const totalMinutes = Math.floor(diffMs / (1000 * 60));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  let durationString = '';
-  if (hours > 0) {
-    durationString += `${hours} hora${hours !== 1 ? 's' : ''}`;
-  }
-  if (minutes > 0) {
-    if (durationString) {
-      durationString += ' e ';
-    }
-    durationString += `${minutes} minuto${minutes !== 1 ? 's' : ''}`;
-  }
-  
-  if (!durationString) {
-    return '0 minutos';
-  }
-
-  return durationString;
-};
-
 
 export const App = () => {
   const [patientName, setPatientName] = useState('');
@@ -64,18 +13,11 @@ export const App = () => {
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
   // Initialize with current time in HH:MM format
   const [reportStartTime, setReportStartTime] = useState(() => new Date().toTimeString().slice(0, 5));
-  
-  // New state for end date and time
-  const [reportEndDate, setReportEndDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [reportEndTime, setReportEndTime] = useState(() => new Date().toTimeString().slice(0, 5));
-
   const [procedureEntries, setProcedureEntries] = useState<ProcedureEntryType[]>([]);
   const [downloadDescription, setDownloadDescription] = useState('');
   const [reportText, setReportText] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [audioBase64, setAudioBase64] = useState<string | null>(null); // State for audio data
-  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false); // State for audio loading
 
   const handleAddProcedureEntry = useCallback(() => {
     setProcedureEntries((prevEntries) => [
@@ -101,23 +43,6 @@ export const App = () => {
     );
   }, []);
 
-  // Helper to format filename for report download
-  const getFilename = useCallback((extension: 'txt' | 'pdf' | 'wav') => {
-    const startDatePart = reportDate.replace(/-/g, '');
-    const startTimePart = reportStartTime.replace(/:/g, '');
-    const endDatePart = reportEndDate.replace(/-/g, '');
-    const endTimePart = reportEndTime.replace(/:/g, '');
-
-
-    if (downloadDescription.trim()) {
-      const sanitizedDescription = downloadDescription.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
-      return `${sanitizedDescription}_${startDatePart}_${startTimePart}_${endDatePart}_${endTimePart}.${extension}`;
-    } else {
-      const namePart = patientName ? patientName.replace(/\s/g, '_') : 'paciente';
-      return `relatorio_${namePart}_${startDatePart}_${startTimePart}_${endDatePart}_${endTimePart}.${extension}`;
-    }
-  }, [reportDate, reportStartTime, reportEndDate, reportEndTime, downloadDescription, patientName]);
-
   const handleGenerateReport = useCallback(async () => {
     const hasValidProcedure = procedureEntries.some(entry => entry.description.trim() !== '');
     if (procedureEntries.length === 0 || !hasValidProcedure) {
@@ -128,18 +53,11 @@ export const App = () => {
     setIsLoading(true);
     setError(null);
     setReportText(null);
-    setAudioBase64(null); // Clear previous audio
 
     try {
       const patientInfo = patientName ? ` para ${patientName}` : ' para paciente não especificado';
+      const dateTimeInfo = `no dia ${reportDate} às ${reportStartTime}`;
       
-      const formattedStartDate = new Date(reportDate).toLocaleDateString('pt-BR');
-      const formattedEndDate = new Date(reportEndDate).toLocaleDateString('pt-BR');
-
-      const shiftDuration = calculateShiftDuration(
-        reportDate, reportStartTime, reportEndDate, reportEndTime
-      );
-
       const proceduresTextForReport = procedureEntries
         .filter(entry => entry.description.trim())
         .map(entry => {
@@ -148,13 +66,7 @@ export const App = () => {
         })
         .join('\n\n');
       
-      const fullReportContent = `Relatório de Cuidados${patientInfo}\n\n` +
-                                `Data de Início: ${formattedStartDate}\n` +
-                                `Hora de Início: ${reportStartTime}\n` +
-                                `Data Final: ${formattedEndDate}\n` +
-                                `Hora Final: ${reportEndTime}\n` +
-                                `Tempo de Plantão: ${shiftDuration}\n\n` +
-                                `${proceduresTextForReport}`;
+      const fullReportContent = `Relatório de Cuidados${patientInfo} ${dateTimeInfo}\n\n${proceduresTextForReport}`;
       setReportText(fullReportContent);
 
     } catch (err: any) {
@@ -163,142 +75,34 @@ export const App = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [patientName, reportDate, reportStartTime, reportEndDate, reportEndTime, procedureEntries]);
+  }, [patientName, reportDate, reportStartTime, procedureEntries]);
 
-  const handleGenerateAudio = useCallback(async () => {
-    if (!reportText) {
-      setError('Por favor, gere o relatório de texto primeiro.');
-      return;
+  // Helper to format filename for report download
+  const getFilename = useCallback(() => {
+    const datePart = reportDate.replace(/-/g, '');
+    const timePart = reportStartTime.replace(/:/g, '');
+
+    if (downloadDescription.trim()) {
+      const sanitizedDescription = downloadDescription.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+      return `${sanitizedDescription}_${datePart}_${timePart}.txt`;
+    } else {
+      const namePart = patientName ? patientName.replace(/\s/g, '_') : 'paciente';
+      return `relatorio_${namePart}_${datePart}_${timePart}.txt`;
     }
-
-    setIsGeneratingAudio(true);
-    setError(null);
-    setAudioBase64(null);
-
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-preview-tts',
-        contents: [{ parts: [{ text: reportText }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
-          },
-        },
-      });
-
-      const base64AudioString = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (base64AudioString) {
-        setAudioBase64(base64AudioString);
-      } else {
-        setError('Nenhum áudio foi gerado.');
-      }
-    } catch (err: any) {
-      console.error('Erro ao gerar áudio:', err);
-      setError('Falha ao gerar o áudio. Por favor, verifique sua chave API e tente novamente.');
-    } finally {
-      setIsGeneratingAudio(false);
-    }
-  }, [reportText]);
-
-  const handleDownloadAudio = useCallback(async () => {
-    if (!audioBase64) {
-      setError('Por favor, gere o áudio antes de tentar baixar.');
-      return;
-    }
-    
-    try {
-      const audioBytes = decode(audioBase64);
-      // Fix: Use window.AudioContext directly.
-      const audioContext = new window.AudioContext();
-      const audioBuffer = await decodeAudioData(audioBytes, audioContext, 24000, 1);
-      const wavBlob = arrayBufferToWavBlob(audioBuffer, audioContext.sampleRate);
-
-      const filename = getFilename('wav');
-      const url = URL.createObjectURL(wavBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Erro ao baixar áudio:', err);
-      setError('Falha ao baixar o áudio.');
-    }
-  }, [audioBase64, getFilename]);
+  }, [reportDate, reportStartTime, downloadDescription, patientName]);
 
   const handleDownloadReport = useCallback(() => {
-    if (!reportText) { // Ensure report is generated before trying to download
-      setError('Por favor, gere o relatório antes de tentar baixar.');
-      return;
+    if (reportText) {
+      const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = getFilename();
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
     }
-
-    const doc = new jsPDF();
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(18);
-    doc.text('Relatório de Cuidados', 105, 20, { align: 'center' }); // Centered title
-
-    let yPos = 35; // Start position for content
-    doc.setFontSize(12);
-
-    // Patient Info
-    const patientDisplay = patientName.trim() ? patientName.trim() : 'Não especificado';
-    doc.text(`Paciente: ${patientDisplay}`, 20, yPos);
-    yPos += 7;
-
-    // Dates and Times
-    const formattedStartDate = new Date(reportDate).toLocaleDateString('pt-BR');
-    const formattedEndDate = new Date(reportEndDate).toLocaleDateString('pt-BR');
-    const shiftDuration = calculateShiftDuration(
-      reportDate, reportStartTime, reportEndDate, reportEndTime
-    );
-
-    doc.text(`Data de Início: ${formattedStartDate}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Hora de Início: ${reportStartTime}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Data Final: ${formattedEndDate}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Hora Final: ${reportEndTime}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Tempo de Plantão: ${shiftDuration}`, 20, yPos);
-    yPos += 12; // Extra space before procedures
-
-    // Procedures Section
-    doc.setFontSize(14);
-    doc.text('Procedimentos Detalhados:', 20, yPos);
-    yPos += 8;
-
-    doc.setFontSize(11);
-    procedureEntries.filter(entry => entry.description.trim()).forEach((entry, index) => {
-        const timeDisplay = entry.time.trim() ? entry.time.trim() : 'Não especificada';
-        const descriptionLines = doc.splitTextToSize(`Descrição: ${entry.description.trim()}`, 170); // Max width 170mm
-
-        doc.text(`- Hora: ${timeDisplay}`, 25, yPos);
-        yPos += 7;
-        descriptionLines.forEach(line => {
-            doc.text(line, 30, yPos);
-            yPos += 7;
-        });
-        yPos += 5; // Space between entries
-
-        // Add new page if content exceeds current page height (A4 is 297mm, leave margins)
-        if (yPos > 270) { 
-            doc.addPage();
-            yPos = 20; // Reset yPos for new page
-            doc.setFontSize(14);
-            doc.text('Procedimentos Detalhados (continuação):', 20, yPos);
-            yPos += 8;
-            doc.setFontSize(11);
-        }
-    });
-
-    const filename = getFilename('pdf');
-    doc.save(filename);
-  }, [reportText, getFilename, patientName, reportDate, reportStartTime, reportEndDate, reportEndTime, procedureEntries]);
+  }, [reportText, getFilename]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -314,7 +118,13 @@ export const App = () => {
       <main className="w-full max-w-2xl bg-white p-8 rounded-xl shadow-lg border border-gray-200">
         <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
           <Input
-            label="Data de Início do Relatório"
+            label="Nome do Paciente (Opcional)"
+            placeholder="Ex: Maria da Silva"
+            value={patientName}
+            onChange={(e) => setPatientName(e.target.value)}
+          />
+          <Input
+            label="Data do Relatório"
             type="date"
             value={reportDate}
             onChange={(e) => setReportDate(e.target.value)}
@@ -326,20 +136,6 @@ export const App = () => {
             onChange={(e) => setReportStartTime(e.target.value)}
           />
           
-          {/* New fields for end date and time */}
-          <Input
-            label="Data Final do Relatório"
-            type="date"
-            value={reportEndDate}
-            onChange={(e) => setReportEndDate(e.target.value)}
-          />
-          <Input
-            label="Hora Final do Relatório"
-            type="time"
-            value={reportEndTime}
-            onChange={(e) => setReportEndTime(e.target.value)}
-          />
-
           <ProcedureRepeatGroup
             entries={procedureEntries}
             onAdd={handleAddProcedureEntry}
@@ -381,31 +177,8 @@ export const App = () => {
               onClick={handleDownloadReport}
               className="inline-block bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
             >
-              Baixar Relatório (PDF)
+              Baixar Relatório (TXT)
             </Button>
-            
-            {/* Audio generation and player section */}
-            <div className="mt-8 pt-6 border-t border-gray-200">
-              <h3 className="text-xl font-semibold text-gray-800 mb-4">Relatório em Áudio:</h3>
-              <Button
-                onClick={handleGenerateAudio}
-                disabled={isGeneratingAudio || !reportText}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isGeneratingAudio ? 'Gerando Áudio...' : 'Gerar Áudio do Relatório'}
-              </Button>
-              {audioBase64 && (
-                <div className="mt-4 space-y-4">
-                  <AudioPlayer base64Audio={audioBase64} />
-                  <Button
-                    onClick={handleDownloadAudio}
-                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
-                  >
-                    Baixar Áudio (WAV)
-                  </Button>
-                </div>
-              )}
-            </div>
           </div>
         )}
 
