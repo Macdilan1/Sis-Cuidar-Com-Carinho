@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Button } from './components/Button';
 import { Input } from './components/Input';
 import { ProcedureRepeatGroup, ProcedureEntryType } from './components/ProcedureRepeatGroup';
@@ -36,6 +36,8 @@ export const App = () => {
   const [reportText, setReportText] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null); // Ref for the hidden file input
 
   const handleAddProcedureEntry = useCallback(() => {
     setProcedureEntries((prevEntries) => [
@@ -218,6 +220,23 @@ ${proceduresTextFormatted}`;
     window.open(`https://wa.me/?text=${message}`, '_blank');
   }, [reportText, patientName, reportDate]);
 
+  const handleOpenFile = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === 'application/pdf') {
+      const fileURL = URL.createObjectURL(file);
+      window.open(fileURL, '_blank');
+      // Revoke the URL after a short delay or when the component unmounts
+      // to free up memory, though browsers often handle this for new tabs.
+      // setTimeout(() => URL.revokeObjectURL(fileURL), 5000); // Example delay
+    } else if (file) {
+      setError('Por favor, selecione um arquivo PDF.');
+    }
+    // Clear the input value so the same file can be selected again if needed
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
       <header className="w-full max-w-2xl text-center mb-8">
@@ -317,6 +336,25 @@ ${proceduresTextFormatted}`;
             </div>
           </div>
         )}
+
+        <div className="mt-8 pt-6 border-t border-gray-200">
+            <h3 className="text-xl font-semibold text-gray-800 mb-4">Ferramentas PDF:</h3>
+            <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleOpenFile}
+                ref={fileInputRef}
+                style={{ display: 'none' }} 
+            />
+            <Button
+                type="button" 
+                onClick={() => fileInputRef.current?.click()} 
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-md transition-colors duration-200"
+            >
+                Abrir PDF Existente do Computador
+            </Button>
+        </div>
+
 
         <section className="mt-8 pt-6 border-t border-gray-200 text-center text-gray-500 text-sm">
           <p>
