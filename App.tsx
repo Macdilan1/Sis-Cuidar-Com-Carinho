@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from './components/Button';
 import { Input } from './components/Input';
 import { ProcedureRepeatGroup, ProcedureEntryType } from './components/ProcedureRepeatGroup';
@@ -38,6 +38,16 @@ export const App = () => {
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null); // Ref for the hidden file input
+  const [openedPdfUrl, setOpenedPdfUrl] = useState<string | null>(null); // State for PDF viewer modal
+
+  // Effect to clean up object URLs when component unmounts or PDF is closed
+  useEffect(() => {
+    return () => {
+      if (openedPdfUrl) {
+        URL.revokeObjectURL(openedPdfUrl);
+      }
+    };
+  }, [openedPdfUrl]);
 
   const handleAddProcedureEntry = useCallback(() => {
     setProcedureEntries((prevEntries) => [
@@ -223,11 +233,11 @@ ${proceduresTextFormatted}`;
   const handleOpenFile = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
+      if (openedPdfUrl) {
+        URL.revokeObjectURL(openedPdfUrl); // Revoke previous URL if any
+      }
       const fileURL = URL.createObjectURL(file);
-      window.open(fileURL, '_blank');
-      // Revoke the URL after a short delay or when the component unmounts
-      // to free up memory, though browsers often handle this for new tabs.
-      // setTimeout(() => URL.revokeObjectURL(fileURL), 5000); // Example delay
+      setOpenedPdfUrl(fileURL);
     } else if (file) {
       setError('Por favor, selecione um arquivo PDF.');
     }
@@ -235,7 +245,14 @@ ${proceduresTextFormatted}`;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, []);
+  }, [openedPdfUrl]);
+
+  const handleClosePdfViewer = useCallback(() => {
+    if (openedPdfUrl) {
+      URL.revokeObjectURL(openedPdfUrl);
+      setOpenedPdfUrl(null);
+    }
+  }, [openedPdfUrl]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -351,10 +368,30 @@ ${proceduresTextFormatted}`;
                 onClick={() => fileInputRef.current?.click()} 
                 className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-md transition-colors duration-200"
             >
-                Abrir PDF Existente do Computador
+                Abrir PDF existente
             </Button>
         </div>
 
+        {openedPdfUrl && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-[90vh] flex flex-col">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-800">Visualizador de PDF</h3>
+                <Button 
+                  onClick={handleClosePdfViewer}
+                  className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded-md"
+                >
+                  Fechar
+                </Button>
+              </div>
+              <iframe 
+                src={openedPdfUrl} 
+                className="flex-1 w-full h-full border-0 rounded-b-lg" 
+                title="Visualizador de PDF"
+              ></iframe>
+            </div>
+          </div>
+        )}
 
         <section className="mt-8 pt-6 border-t border-gray-200 text-center text-gray-500 text-sm">
           <p>
