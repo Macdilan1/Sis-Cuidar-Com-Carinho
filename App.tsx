@@ -7,12 +7,30 @@ import { ProcedureRepeatGroup, ProcedureEntryType } from './components/Procedure
 // The 'use' client directive is important for client-side functionality.
 'use client';
 
+// Declare jsPDF globally, as it's loaded via CDN
+declare global {
+  interface Window {
+    jspdf: {
+      jsPDF: new () => any; // Simplified type for global jsPDF
+    };
+  }
+}
+
 export const App = () => {
   const [patientName, setPatientName] = useState('');
   // Initialize with current date in YYYY-MM-DD format
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
   // Initialize with current time in HH:MM format
-  const [reportStartTime, setReportStartTime] = useState(() => new Date().toTimeString().slice(0, 5));
+  const [reportStartTime, setReportStartTime] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  });
+  // Add new state for report end date and time
+  const [reportEndDate, setReportEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reportEndTime, setReportEndTime] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  });
   const [procedureEntries, setProcedureEntries] = useState<ProcedureEntryType[]>([]);
   const [downloadDescription, setDownloadDescription] = useState('');
   const [reportText, setReportText] = useState<string | null>(null);
@@ -55,18 +73,43 @@ export const App = () => {
     setReportText(null);
 
     try {
-      const patientInfo = patientName ? ` para ${patientName}` : ' para paciente não especificado';
-      const dateTimeInfo = `no dia ${reportDate} às ${reportStartTime}`;
+      const formattedStartDate = reportDate.split('-').reverse().join('/'); // DD/MM/YYYY
+      const formattedEndDate = reportEndDate.split('-').reverse().join('/'); // DD/MM/YYYY
+
+      const startDateTime = new Date(`${reportDate}T${reportStartTime}:00`);
+      const endDateTime = new Date(`${reportEndDate}T${reportEndTime}:00`);
+
+      let shiftDurationHours = 0;
+      if (endDateTime.getTime() < startDateTime.getTime()) {
+        setError('A data e hora final não podem ser anteriores à data e hora de início.');
+        setIsLoading(false);
+        return;
+      } else {
+        const diffMs = endDateTime.getTime() - startDateTime.getTime();
+        shiftDurationHours = Math.round(diffMs / (1000 * 60 * 60)); // Round to nearest hour
+      }
       
-      const proceduresTextForReport = procedureEntries
+      const patientInfoLine = patientName ? `Paciente: ${patientName}` : 'Paciente: Não especificado';
+
+      const proceduresTextFormatted = procedureEntries
         .filter(entry => entry.description.trim())
         .map(entry => {
           const timePart = entry.time ? `Hora: ${entry.time}` : 'Hora: Não especificada';
-          return `${timePart}\nDescrição: ${entry.description.trim()}`;
+          return `- ${timePart}\nDescrição: ${entry.description.trim()}`;
         })
         .join('\n\n');
       
-      const fullReportContent = `Relatório de Cuidados${patientInfo} ${dateTimeInfo}\n\n${proceduresTextForReport}`;
+      const fullReportContent = `Relatório de Cuidados
+${patientInfoLine}
+Data Início: ${formattedStartDate}
+Hora Início: ${reportStartTime}
+Data Final: ${formattedEndDate}
+Hora Final: ${reportEndTime}
+Tempo de Plantão: ${shiftDurationHours} horas
+
+Procedimentos Detalhados:
+${proceduresTextFormatted}`;
+
       setReportText(fullReportContent);
 
     } catch (err: any) {
@@ -75,34 +118,105 @@ export const App = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [patientName, reportDate, reportStartTime, procedureEntries]);
+  }, [patientName, reportDate, reportStartTime, reportEndDate, reportEndTime, procedureEntries]);
 
   // Helper to format filename for report download
   const getFilename = useCallback(() => {
-    const datePart = reportDate.replace(/-/g, '');
+    const formattedDateForFilename = reportDate.split('-').reverse().join(''); // DDMMYYYY
     const timePart = reportStartTime.replace(/:/g, '');
 
     if (downloadDescription.trim()) {
       const sanitizedDescription = downloadDescription.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
-      return `${sanitizedDescription}_${datePart}_${timePart}.txt`;
+      return `${sanitizedDescription}_${formattedDateForFilename}_${timePart}.pdf`;
     } else {
       const namePart = patientName ? patientName.replace(/\s/g, '_') : 'paciente';
-      return `relatorio_${namePart}_${datePart}_${timePart}.txt`;
+      return `relatorio_${namePart}_${formattedDateForFilename}_${timePart}.pdf`;
     }
   }, [reportDate, reportStartTime, downloadDescription, patientName]);
 
   const handleDownloadReport = useCallback(() => {
-    if (reportText) {
-      const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = getFilename();
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
+    if (!reportText) {
+      setError('Nenhum relatório para baixar. Por favor, gere o relatório primeiro.');
+      return;
+    }
+
+    if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
+      setError('A biblioteca de PDF não foi carregada. Por favor, tente novamente ou verifique sua conexão.');
+      console.error('jsPDF library not found.');
+      return;
+    }
+
+    try {
+      const doc = new window.jspdf.jsPDF();
+      doc.setFont('helvetica'); // Use a common sans-serif font
+      doc.setFontSize(12);
+
+      const pageHeight = doc.internal.pageSize.height;
+      const pageWidth = doc.internal.pageSize.width;
+      const margin = 15; // mm
+
+      let yPosition = margin;
+
+      // Add title
+      doc.setFontSize(16);
+      doc.text('Relatório de Cuidados', pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 15; // Move down for next content
+
+      doc.setFontSize(12);
+
+      // Split the reportText into lines and add them to the PDF
+      const lines = reportText.split('\n');
+
+      for (const line of lines) {
+          const splitLines = doc.splitTextToSize(line, pageWidth - 2 * margin);
+
+          for (const splitLine of splitLines) {
+              if (yPosition + 7 > pageHeight - margin) { // Check if new page is needed (7 is estimated line height)
+                  doc.addPage();
+                  yPosition = margin; // Reset y position for new page
+              }
+              // Add special formatting for "Procedimentos Detalhados:" title
+              if (splitLine.includes("Procedimentos Detalhados:")) {
+                doc.setFontSize(14); // Slightly larger for section title
+                doc.text(splitLine, margin, yPosition);
+                doc.setFontSize(12); // Reset to normal size
+              } else if (splitLine.startsWith('- Hora:') || splitLine.startsWith('Descrição:')) {
+                // Indent procedure details slightly
+                doc.text(splitLine, margin + 5, yPosition);
+              } else {
+                doc.text(splitLine, margin, yPosition);
+              }
+              yPosition += 7; // Increment y position for the next line
+          }
+          // Add a bit more space after certain sections for better readability
+          if (line.includes('Tempo de Plantão:')) {
+              yPosition += 5;
+          }
+      }
+
+      doc.save(getFilename());
+
+    } catch (pdfError) {
+      console.error('Erro ao gerar o PDF:', pdfError);
+      setError('Falha ao gerar o arquivo PDF. Por favor, tente novamente.');
     }
   }, [reportText, getFilename]);
+
+  const handleShareOnWhatsApp = useCallback(() => {
+    if (!reportText) {
+      setError('Nenhum relatório para compartilhar. Por favor, gere o relatório primeiro.');
+      return;
+    }
+
+    const patientInfo = patientName ? ` para ${patientName}` : '';
+    const dateInfo = reportDate ? ` em ${reportDate.split('-').reverse().join('/')}` : '';
+    const message = encodeURIComponent(
+      `Olá! Um Relatório de Cuidados${patientInfo} foi gerado${dateInfo}. Por favor, verifique o arquivo PDF que acabei de baixar e enviarei.`
+    );
+    
+    // Open WhatsApp Web/App with the pre-filled message
+    window.open(`https://wa.me/?text=${message}`, '_blank');
+  }, [reportText, patientName, reportDate]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -124,7 +238,7 @@ export const App = () => {
             onChange={(e) => setPatientName(e.target.value)}
           />
           <Input
-            label="Data do Relatório"
+            label="Data de Início do Relatório"
             type="date"
             value={reportDate}
             onChange={(e) => setReportDate(e.target.value)}
@@ -135,6 +249,19 @@ export const App = () => {
             value={reportStartTime}
             onChange={(e) => setReportStartTime(e.target.value)}
           />
+          {/* New Input fields for end date and time */}
+          <Input
+            label="Data Final do Relatório"
+            type="date"
+            value={reportEndDate}
+            onChange={(e) => setReportEndDate(e.target.value)}
+          />
+          <Input
+            label="Hora de Término do Plantão"
+            type="time"
+            value={reportEndTime}
+            onChange={(e) => setReportEndTime(e.target.value)}
+          />
           
           <ProcedureRepeatGroup
             entries={procedureEntries}
@@ -144,10 +271,11 @@ export const App = () => {
           />
 
           <Input
-            label="Descrição para o Nome do Arquivo (Opcional)"
+            label="DESCRIÇÃO PARA O NOME DO ARQUIVO (OPCIONAL)"
             placeholder="Ex: Relatório diário Maria Silva"
             value={downloadDescription}
             onChange={(e) => setDownloadDescription(e.target.value)}
+            wrapperClassName="p-4 border border-gray-200 rounded-md bg-gray-50 relative"
           />
 
           <Button
@@ -173,12 +301,20 @@ export const App = () => {
                 {reportText}
               </pre>
             </div>
-            <Button
-              onClick={handleDownloadReport}
-              className="inline-block bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
-            >
-              Baixar Relatório (TXT)
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button
+                onClick={handleDownloadReport}
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
+              >
+                Baixar Relatório (PDF)
+              </Button>
+              <Button
+                onClick={handleShareOnWhatsApp}
+                className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
+              >
+                Compartilhar via WhatsApp
+              </Button>
+            </div>
           </div>
         )}
 

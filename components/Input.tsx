@@ -2,13 +2,15 @@ import React from 'react';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label: string;
+  wrapperClassName?: string;
+  labelClassName?: string;
 }
 
-export const Input: React.FC<InputProps> = ({ label, id, ...props }) => {
+export const Input: React.FC<InputProps> = ({ label, id, wrapperClassName = '', labelClassName = '', ...props }) => {
   const inputId = id || `input-${label.toLowerCase().replace(/\s/g, '-')}`;
   return (
-    <div>
-      <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-2">
+    <div className={wrapperClassName}>
+      <label htmlFor={inputId} className={`block text-sm font-medium text-gray-700 mb-2 ${labelClassName}`}>
         {label}
       </label>
       <input
