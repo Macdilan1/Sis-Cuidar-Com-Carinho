@@ -36,6 +36,7 @@ export const App = () => {
   const [reportText, setReportText] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null); // New state for success message
 
   const fileInputRef = useRef<HTMLInputElement>(null); // Ref for the hidden file input
   const [openedPdfUrl, setOpenedPdfUrl] = useState<string | null>(null); // State for PDF viewer modal
@@ -77,11 +78,13 @@ export const App = () => {
     const hasValidProcedure = procedureEntries.some(entry => entry.description.trim() !== '');
     if (procedureEntries.length === 0 || !hasValidProcedure) {
       setError('Por favor, adicione e preencha ao menos uma descrição de procedimento para gerar o relatório.');
+      setSuccessMessage(null); // Clear success message on validation error
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    setSuccessMessage(null); // Clear previous success message
     setReportText(null);
 
     try {
@@ -123,10 +126,12 @@ Procedimentos Detalhados:
 ${proceduresTextFormatted}`;
 
       setReportText(fullReportContent);
+      setSuccessMessage('Relatório gerado com sucesso!'); // Set success message
 
     } catch (err: any) {
       console.error('Erro ao gerar relatório:', err);
       setError('Falha ao gerar o relatório. Por favor, tente novamente mais tarde.');
+      setSuccessMessage(null); // Clear success message on error
     } finally {
       setIsLoading(false);
     }
@@ -149,11 +154,13 @@ ${proceduresTextFormatted}`;
   const handleDownloadReport = useCallback(() => {
     if (!reportText) {
       setError('Nenhum relatório para baixar. Por favor, gere o relatório primeiro.');
+      setSuccessMessage(null);
       return;
     }
 
     if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
       setError('A biblioteca de PDF não foi carregada. Por favor, tente novamente ou verifique sua conexão.');
+      setSuccessMessage(null);
       console.error('jsPDF library not found.');
       return;
     }
@@ -211,12 +218,14 @@ ${proceduresTextFormatted}`;
     } catch (pdfError) {
       console.error('Erro ao gerar o PDF:', pdfError);
       setError('Falha ao gerar o arquivo PDF. Por favor, tente novamente.');
+      setSuccessMessage(null);
     }
   }, [reportText, getFilename]);
 
   const handleShareOnWhatsApp = useCallback(() => {
     if (!reportText) {
       setError('Nenhum relatório para compartilhar. Por favor, gere o relatório primeiro.');
+      setSuccessMessage(null);
       return;
     }
 
@@ -238,8 +247,11 @@ ${proceduresTextFormatted}`;
       }
       const fileURL = URL.createObjectURL(file);
       setOpenedPdfUrl(fileURL);
+      setSuccessMessage(null); // Clear previous messages
+      setError(null);
     } else if (file) {
       setError('Por favor, selecione um arquivo PDF.');
+      setSuccessMessage(null); // Clear previous messages
     }
     // Clear the input value so the same file can be selected again if needed
     if (fileInputRef.current) {
@@ -251,6 +263,8 @@ ${proceduresTextFormatted}`;
     if (openedPdfUrl) {
       URL.revokeObjectURL(openedPdfUrl);
       setOpenedPdfUrl(null);
+      setSuccessMessage(null); // Clear messages when viewer is closed
+      setError(null);
     }
   }, [openedPdfUrl]);
 
@@ -326,6 +340,12 @@ ${proceduresTextFormatted}`;
         {error && (
           <div className="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-md" role="alert">
             {error}
+          </div>
+        )}
+
+        {successMessage && ( // Display success message
+          <div className="mt-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-md" role="status">
+            {successMessage}
           </div>
         )}
 
