@@ -16,21 +16,32 @@ declare global {
   }
 }
 
+// Helper function to get the current local date in YYYY-MM-DD format
+const getFormattedLocalDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0'); // JS months are 0-indexed
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Helper function to get the current local time in HH:MM format
+const getFormattedLocalTime = () => {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
 export const App = () => {
   const [patientName, setPatientName] = useState('');
-  // Initialize with current date in YYYY-MM-DD format
-  const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
+  // Initialize with current date in YYYY-MM-DD format, correcting for timezone issues
+  const [reportDate, setReportDate] = useState(getFormattedLocalDate);
   // Initialize with current time in HH:MM format
-  const [reportStartTime, setReportStartTime] = useState(() => {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  });
-  // Add new state for report end date and time
-  const [reportEndDate, setReportEndDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [reportEndTime, setReportEndTime] = useState(() => {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  });
+  const [reportStartTime, setReportStartTime] = useState(getFormattedLocalTime);
+  // Initialize end date and time similarly
+  const [reportEndDate, setReportEndDate] = useState(getFormattedLocalDate);
+  const [reportEndTime, setReportEndTime] = useState(getFormattedLocalTime);
   const [procedureEntries, setProcedureEntries] = useState<ProcedureEntryType[]>([]);
   const [downloadDescription, setDownloadDescription] = useState('');
   const [reportText, setReportText] = useState<string | null>(null);
